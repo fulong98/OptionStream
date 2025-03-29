@@ -115,3 +115,6 @@ The system is optimized for:
 ```
 docker exec -it kafka kafka-topics.sh --create --topic orderbook.deribit.options --bootstrap-server localhost:9092 --partitions 3 --replication-factor 1
 ```
+
+
+kafka-console-consumer.sh --bootstrap-server localhost:9092 --topic orderbook.deribit.options --from-beginning

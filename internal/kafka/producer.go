@@ -12,7 +12,7 @@ import (
 )
 
 type Producer struct {
-	writer     *kafkago.Writer
+	writer     Writer
 	messageCh  chan kafkago.Message
 	closeCh    chan struct{}
 	wg         sync.WaitGroup
@@ -29,6 +29,12 @@ type Producer struct {
 		lastBatchSize    int
 		retryCount       int64
 	}
+}
+
+type Writer interface {
+	WriteMessages(ctx context.Context, msgs ...kafkago.Message) error
+	Close() error
+	Stats() kafkago.WriterStats
 }
 
 func NewProducer(cfg config.KafkaConfig) (*Producer, error) {
@@ -64,6 +70,23 @@ func NewProducer(cfg config.KafkaConfig) (*Producer, error) {
 
 	log.Printf("Successfully connected to Kafka")
 
+	producer := &Producer{
+		writer:     writer,
+		messageCh:  make(chan kafkago.Message, cfg.BatchSize*2),
+		closeCh:    make(chan struct{}),
+		batchSize:  cfg.BatchSize,
+		batchDelay: time.Duration(cfg.BatchTimeoutMs) * time.Millisecond,
+	}
+
+	// Start the batch processor and stats monitor
+	producer.wg.Add(2)
+	go producer.processBatches()
+	go producer.monitorStats()
+
+	return producer, nil
+}
+
+func NewProducerWithWriter(cfg config.KafkaConfig, writer Writer) (*Producer, error) {
 	producer := &Producer{
 		writer:     writer,
 		messageCh:  make(chan kafkago.Message, cfg.BatchSize*2),
@@ -197,4 +220,28 @@ func (p *Producer) Close() error {
 	close(p.closeCh)
 	p.wg.Wait()
 	return p.writer.Close()
+}
+
+func (p *Producer) GetMessagesReceived() int64 {
+	p.stats.RLock()
+	defer p.stats.RUnlock()
+	return p.stats.messagesReceived
+}
+
+func (p *Producer) GetMessagesSent() int64 {
+	p.stats.RLock()
+	defer p.stats.RUnlock()
+	return p.stats.messagesSent
+}
+
+func (p *Producer) GetErrors() int64 {
+	p.stats.RLock()
+	defer p.stats.RUnlock()
+	return p.stats.errors
+}
+
+func (p *Producer) GetRetryCount() int64 {
+	p.stats.RLock()
+	defer p.stats.RUnlock()
+	return p.stats.retryCount
 }
