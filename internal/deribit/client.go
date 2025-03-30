@@ -94,8 +94,8 @@ func (c *Client) CollectOrderbook(ctx context.Context, producer *kafka.Producer)
 				continue
 			}
 
-			// Send to Kafka
-			if err := producer.SendMessage(c.kafka.Topic, data); err != nil {
+			// Send to Kafka with instrument name as key
+			if err := producer.SendMessage(c.kafka.Topic, msg.Params.Data.Instrument, data); err != nil {
 				log.Printf("Error sending to Kafka: %v", err)
 			}
 		}
