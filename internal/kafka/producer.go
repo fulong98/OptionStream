@@ -42,7 +42,7 @@ func NewProducer(cfg config.KafkaConfig) (*Producer, error) {
 
 	writer := kafkago.NewWriter(kafkago.WriterConfig{
 		Brokers:  cfg.Brokers,
-		Balancer: &kafkago.LeastBytes{},
+		Balancer: &kafkago.CRC32Balancer{},
 		Dialer: &kafkago.Dialer{
 			Timeout:   10 * time.Second,
 			DualStack: true,
@@ -50,7 +50,7 @@ func NewProducer(cfg config.KafkaConfig) (*Producer, error) {
 		},
 		WriteTimeout:     10 * time.Second,
 		ReadTimeout:      10 * time.Second,
-		Async:            false,
+		Async:            true,
 		BatchSize:        cfg.BatchSize,
 		BatchTimeout:     time.Duration(cfg.BatchTimeoutMs) * time.Millisecond,
 		CompressionCodec: kafkago.Snappy.Codec(),
@@ -137,11 +137,6 @@ func (p *Producer) flushBatch(batch []kafkago.Message) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	// Add message IDs for idempotency
-	for i := range batch {
-		batch[i].Key = []byte(fmt.Sprintf("%d", time.Now().UnixNano()+int64(i)))
-	}
-
 	if err := p.writer.WriteMessages(ctx, batch...); err != nil {
 		p.recordError(err)
 		log.Printf("Error flushing batch: %v", err)
@@ -202,10 +197,11 @@ func (p *Producer) recordError(err error) {
 	p.stats.Unlock()
 }
 
-func (p *Producer) SendMessage(topic string, message []byte) error {
+func (p *Producer) SendMessage(topic string, instrumentName string, message []byte) error {
 	select {
 	case p.messageCh <- kafkago.Message{
 		Topic: topic,
+		Key:   []byte(instrumentName),
 		Value: message,
 	}:
 		return nil
