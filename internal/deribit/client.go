@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"sync"
+	"time"
 
 	"github.com/fulong98/OptionStream/internal/config"
 	"github.com/fulong98/OptionStream/internal/kafka"
@@ -43,8 +44,7 @@ func NewClient(cfg config.DeribitConfig, kafkaCfg config.KafkaConfig) *Client {
 	}
 }
 
-func (c *Client) CollectOrderbook(ctx context.Context, producer *kafka.Producer) error {
-	// Connect to Deribit WebSocket
+func (c *Client) connect() (*websocket.Conn, error) {
 	url := c.cfg.WebSocketURL
 	if c.cfg.Testnet {
 		url = "wss://test.deribit.com/ws/api/v2"
@@ -52,10 +52,8 @@ func (c *Client) CollectOrderbook(ctx context.Context, producer *kafka.Producer)
 
 	conn, _, err := websocket.DefaultDialer.Dial(url, nil)
 	if err != nil {
-		return fmt.Errorf("failed to connect to Deribit: %w", err)
+		return nil, fmt.Errorf("failed to connect to Deribit: %w", err)
 	}
-	c.conn = conn
-	defer conn.Close()
 
 	// Subscribe to all instruments
 	subscribeMsg := map[string]interface{}{
@@ -72,10 +70,28 @@ func (c *Client) CollectOrderbook(ctx context.Context, producer *kafka.Producer)
 	}
 
 	if err := conn.WriteJSON(subscribeMsg); err != nil {
-		return fmt.Errorf("failed to subscribe: %w", err)
+		conn.Close()
+		return nil, fmt.Errorf("failed to subscribe: %w", err)
 	}
 
 	log.Printf("Subscribed to %d instruments", len(c.cfg.Instruments))
+	return conn, nil
+}
+
+func (c *Client) CollectOrderbook(ctx context.Context, producer *kafka.Producer) error {
+	var conn *websocket.Conn
+	var err error
+
+	// Initial connection
+	conn, err = c.connect()
+	if err != nil {
+		return err
+	}
+	c.conn = conn
+	defer conn.Close()
+
+	// Create a channel for reconnection
+	reconnect := make(chan struct{})
 
 	// Start reading messages
 	go func() {
@@ -83,6 +99,14 @@ func (c *Client) CollectOrderbook(ctx context.Context, producer *kafka.Producer)
 		for {
 			var msg OrderbookMessage
 			if err := conn.ReadJSON(&msg); err != nil {
+				if websocket.IsCloseError(err, websocket.CloseNormalClosure) {
+					log.Println("WebSocket closed normally, attempting to reconnect...")
+					select {
+					case reconnect <- struct{}{}:
+					default:
+					}
+					return
+				}
 				log.Printf("Error reading message: %v", err)
 				return
 			}
@@ -101,11 +125,39 @@ func (c *Client) CollectOrderbook(ctx context.Context, producer *kafka.Producer)
 		}
 	}()
 
-	// Wait for context cancellation
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-c.done:
-		return fmt.Errorf("WebSocket connection closed")
+	// Main loop for handling reconnections
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-c.done:
+			return fmt.Errorf("WebSocket connection closed")
+		case <-reconnect:
+			log.Println("Reconnecting to Deribit...")
+			// Close the old connection
+			if conn != nil {
+				conn.Close()
+			}
+
+			// Attempt to reconnect with exponential backoff
+			var backoff time.Duration = 1 * time.Second
+			for {
+				conn, err = c.connect()
+				if err == nil {
+					c.conn = conn
+					break
+				}
+				log.Printf("Reconnection attempt failed: %v, retrying in %v", err, backoff)
+				select {
+				case <-ctx.Done():
+					return ctx.Err()
+				case <-time.After(backoff):
+					backoff *= 2 // Exponential backoff
+					if backoff > 30*time.Second {
+						backoff = 30 * time.Second // Cap at 30 seconds
+					}
+				}
+			}
+		}
 	}
 }
