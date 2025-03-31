@@ -198,6 +198,15 @@ func (p *Producer) recordError(err error) {
 }
 
 func (p *Producer) SendMessage(topic string, instrumentName string, message []byte) error {
+	if len(message) == 0 {
+		return fmt.Errorf("empty message, skipping")
+	}
+
+	// Check if instrument name is empty
+	if instrumentName == "" {
+		return fmt.Errorf("empty instrument name, skipping")
+	}
+
 	select {
 	case p.messageCh <- kafkago.Message{
 		Topic: topic,
