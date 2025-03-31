@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"strconv"
 	"sync"
@@ -255,12 +256,12 @@ func (k *KafkaConsumer) readMessages(instrument string, reader *kafka.Reader) {
 			// cancel()
 
 			if err != nil {
-				log.Printf("Error reading message for %s: %v", instrument, err)
-				// Check if context was canceled
-				if k.ctx.Err() != nil {
+				if k.ctx.Err() != nil || err == io.EOF {
+					log.Printf("Stopping reader for %s: connection closed", instrument)
 					return
 				}
 
+				// Only log the error if it's not a normal EOF situation
 				log.Printf("Error reading message for %s: %v", instrument, err)
 				time.Sleep(100 * time.Millisecond)
 				continue
