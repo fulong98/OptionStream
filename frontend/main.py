@@ -5,6 +5,8 @@ import threading
 import websocket
 import time
 from datetime import datetime
+import yaml
+import os
 
 class OrderbookApp:
     def __init__(self, root):
@@ -17,16 +19,23 @@ class OrderbookApp:
         self.ws = None
         self.connected = False
         self.current_instrument = ""
-        self.instruments = ["BTC-31MAR25-81000-P",
-                            "BTC-31MAR25-82000-C",
-                            "BTC-31MAR25-82000-P",
-                            "BTC-31MAR25-83000-C",
-                            "BTC-31MAR25-83000-P",
-                            "BTC-31MAR25-84000-C",
-                            "BTC-31MAR25-84000-P"]
+        self.instruments = self.load_instruments_from_config()
         
         # Create UI
         self.create_ui()
+    def load_instruments_from_config(self):
+        """Load instruments from config.yaml file"""
+        config_paths = ['config.yaml', 'config/config.yaml', './config/config.yaml']
+        
+        for path in config_paths:
+            if os.path.exists(path):
+                try:
+                    with open(path, 'r') as file:
+                        config = yaml.safe_load(file)
+                        if config and 'deribit' in config and 'instruments' in config['deribit']:
+                            return config['deribit']['instruments']
+                except Exception as e:
+                    print(f"Error loading config from {path}: {e}")
         
     def create_ui(self):
         # Main frame
@@ -162,6 +171,7 @@ class OrderbookApp:
                 # Update the orderbook in the main thread
                 self.root.after(0, lambda: update_ui_with_data(data))
             except json.JSONDecodeError as json_error:
+                print(f"Error parsing message: {str(json_error)}...")
                 error_msg = f"Error parsing message: {str(json_error)[:50]}..."
                 self.root.after(0, lambda: update_ui_with_error(error_msg))
             except Exception as general_error:
