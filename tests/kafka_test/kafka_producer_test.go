@@ -105,10 +105,10 @@ func TestProducerSendMessage(t *testing.T) {
 	defer producer.Close()
 
 	// Send messages
-	err = producer.SendMessage(cfg.Topic, []byte("test message 1"))
+	err = producer.SendMessage(cfg.Topic, "BTC-31MAR25-81000-P", []byte("test message 1"))
 	assert.NoError(t, err)
 
-	err = producer.SendMessage(cfg.Topic, []byte("test message 2"))
+	err = producer.SendMessage(cfg.Topic, "BTC-31MAR25-81000-P", []byte("test message 2"))
 	assert.NoError(t, err)
 
 	// Allow time for batch processing
@@ -157,7 +157,7 @@ func TestProducerBatchTimeout(t *testing.T) {
 	defer producer.Close()
 
 	// Send messages (not enough to trigger batch size)
-	err = producer.SendMessage(cfg.Topic, []byte("test message 1"))
+	err = producer.SendMessage(cfg.Topic, "BTC-31MAR25-81000-P", []byte("test message 1"))
 	assert.NoError(t, err)
 
 	// Wait for batch timeout to trigger the flush
