@@ -50,7 +50,7 @@ func NewProducer(cfg config.KafkaConfig) (*Producer, error) {
 		},
 		WriteTimeout:     10 * time.Second,
 		ReadTimeout:      10 * time.Second,
-		Async:            true,
+		Async:            false,
 		BatchSize:        cfg.BatchSize,
 		BatchTimeout:     time.Duration(cfg.BatchTimeoutMs) * time.Millisecond,
 		CompressionCodec: kafkago.Snappy.Codec(),

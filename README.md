@@ -43,6 +43,7 @@ A high-performance system for collecting and streaming BTC/USD options order boo
 │   ├── deribit/           # Deribit WebSocket client
 │   └── kafka/             # Kafka producer implementation
 ├── docker-compose.yml      # Docker services configuration
+├── Makefile              # Build and management commands
 └── README.md
 ```
 
@@ -70,37 +71,73 @@ kafka:
   required_acks: -1
   enable_idempotency: true
   compression_type: "snappy"
+
+server:
+  port: 8080
+  metrics_path: "/metrics"
 ```
 
-## Setup
+## Setup and Usage
+
+### Using Makefile Commands
+
+The project includes a comprehensive Makefile with various commands for development and management:
+
+```bash
+# Build and run
+make build           # Build the Docker images
+make up              # Start all containers
+make down            # Stop and remove all containers
+make restart         # Restart all containers
+
+# Logging
+make logs            # View logs from all containers
+make logs-app        # View logs from the orderbook application
+make logs-kafka      # View logs from the Kafka broker
+
+# Kafka Management
+make create-topics   # Create Kafka topics defined in config
+make list-topics     # List all Kafka topics
+make describe-topic  # Describe a specific topic
+make consume-topic   # Consume messages from a topic
+make produce-test-message  # Send a test message to a topic
+
+# Development
+make run             # Run the orderbook application locally
+make clean           # Remove all containers, volumes, and images
+```
+
+### Manual Setup
 
 1. Start the Kafka stack:
 ```bash
 docker-compose up -d
 ```
 
-2. Build the application:
+2. Create the required Kafka topics:
 ```bash
-go build -o orderbook cmd/orderbook/main.go
+make create-topics TOPIC_NAME=orderbook.deribit.options PARTITIONS=64
 ```
 
-3. Run the application:
+3. Build and run the application:
 ```bash
-./orderbook
+make build
+make up
 ```
 
 ## Monitoring
 
-The system provides real-time monitoring through logs:
+The system provides real-time monitoring through:
+- HTTP metrics endpoint at `/metrics`
+- Detailed application logs
+- Kafka UI available at http://localhost:8080
+
+### Metrics Available
 - Message throughput statistics
 - Error rates and types
 - Batch processing metrics
 - Connection status
-
-Example log output:
-```
-Kafka Stats - Received: 1000, Sent: 998, Errors: 2, Retries: 1, Last Error: connection refused, Last Batch Size: 100
-```
+- WebSocket connection health
 
 ## Performance Optimization
 
@@ -110,6 +147,23 @@ The system is optimized for:
 - Data reliability with idempotency and retries
 - Resource efficiency with connection pooling
 - Network resilience with automatic reconnection
+
+## Development
+
+To run the application locally for development:
+```bash
+make run
+```
+
+To view logs:
+```bash
+make logs-app
+```
+
+To consume messages from a topic:
+```bash
+make consume-topic TOPIC_NAME=orderbook.deribit.options
+```
 
 ## Create topic
 ```
