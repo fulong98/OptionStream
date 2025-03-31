@@ -5,6 +5,7 @@ go 1.23
 toolchain go1.23.7
 
 require (
+	github.com/gorilla/mux v1.8.1
 	github.com/gorilla/websocket v1.5.3
 	github.com/segmentio/kafka-go v0.4.47
 	github.com/spf13/cobra v1.9.1
