@@ -42,10 +42,23 @@ A high-performance system for collecting and streaming BTC/USD options order boo
 │   ├── config/            # Configuration management
 │   ├── deribit/           # Deribit WebSocket client
 │   └── kafka/             # Kafka producer implementation
+├── frontend/
+│   ├── main.py           # simple ui to watch the orderbook update
 ├── docker-compose.yml      # Docker services configuration
 ├── Makefile              # Build and management commands
 └── README.md
 ```
+
+## UML Diagrams
+
+### Component Architecture
+![Component Architecture](img/comp_diagram.drawio.png)
+
+### Class Diagram 
+![Class Diagram](img/class_diagram.drawio.png)
+
+### Sequence Diagram
+![Sequence Diagram](img/seq_diagram.drawio.png)
 
 ## Configuration
 
@@ -71,104 +84,34 @@ kafka:
   required_acks: -1
   enable_idempotency: true
   compression_type: "snappy"
-
-server:
-  port: 8080
-  metrics_path: "/metrics"
 ```
 
-## Setup and Usage
+## Quick Start
+For a quick setup, use the provided scripts:
 
-### Using Makefile Commands
+Run the producer (collects data from Deribit and sends to Kafka):
 
-The project includes a comprehensive Makefile with various commands for development and management:
+``` ./start_producer.sh```
 
-```bash
-# Build and run
-make build           # Build the Docker images
-make up              # Start all containers
-make down            # Stop and remove all containers
-make restart         # Restart all containers
+Open a new terminal tab to run the consumer (processes Kafka messages):
+```  ./start_consumer.sh```
 
-# Logging
-make logs            # View logs from all containers
-make logs-app        # View logs from the orderbook application
-make logs-kafka      # View logs from the Kafka broker
+If you want to visualize the orderbook updates in real-time:
 
-# Kafka Management
-make create-topics   # Create Kafka topics defined in config
-make list-topics     # List all Kafka topics
-make describe-topic  # Describe a specific topic
-make consume-topic   # Consume messages from a topic
-make produce-test-message  # Send a test message to a topic
+```./start_ui.sh```
+The UI will allow you to select different instruments and view their order books in real-time.
 
-# Development
-make run             # Run the orderbook application locally
-make clean           # Remove all containers, volumes, and images
-```
+## Design Considerations & Thought Process
+1. Batching Strategy: Rather than sending individual updates to Kafka, messages are batched by time (100ms default) or size (100 messages default). This significantly reduces network overhead while maintaining near real-time delivery.
+2. Message Compression: Snappy compression reduces bandwidth usage by approximately 60-70% with minimal CPU overhead.
 
-### Manual Setup
+## Robust error handling is critical for a system that interfaces with external APIs:
 
-1. Start the Kafka stack:
-```bash
-docker-compose up -d
-```
-
-2. Create the required Kafka topics:
-```bash
-make create-topics TOPIC_NAME=orderbook.deribit.options PARTITIONS=64
-```
-
-3. Build and run the application:
-```bash
-make build
-make up
-```
-
-## Monitoring
-
-The system provides real-time monitoring through:
-- HTTP metrics endpoint at `/metrics`
-- Detailed application logs
-- Kafka UI available at http://localhost:8080
-
-### Metrics Available
-- Message throughput statistics
-- Error rates and types
-- Batch processing metrics
-- Connection status
-- WebSocket connection health
-
-## Performance Optimization
-
-The system is optimized for:
-- High throughput through batch processing
-- Low latency with configurable batch timeouts
-- Data reliability with idempotency and retries
-- Resource efficiency with connection pooling
-- Network resilience with automatic reconnection
-
-## Development
-
-To run the application locally for development:
-```bash
-make run
-```
-
-To view logs:
-```bash
-make logs-app
-```
-
-To consume messages from a topic:
-```bash
-make consume-topic TOPIC_NAME=orderbook.deribit.options
-```
-
-## Create topic
-```
-docker exec -it kafka kafka-topics.sh --create --topic orderbook.deribit.options --bootstrap-server localhost:9092 --partitions 64 --replication-factor 1
-```
+1. Auto-Reconnection: The WebSocket client automatically attempts to reconnect with exponential backoff on connection failures.
+2. Graceful Degradation: If specific instruments become unavailable, the system continues collecting data for others.
+3. Comprehensive Logging: All errors are logged with context for debugging, including timestamps and request details.
 
 
-kafka-console-consumer.sh --bootstrap-server localhost:9092 --topic orderbook.deribit.options --from-beginning
+## Future Enhancements
+1. instrument auto-discovery
+2. better auto recover/ reconnect 
