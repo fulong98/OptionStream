@@ -101,6 +101,12 @@ If you want to visualize the orderbook updates in real-time:
 ```./start_ui.sh```
 The UI will allow you to select different instruments and view their order books in real-time.
 
+You can also monitor Kafka topics and messages through the Kafka UI at:
+```
+http://localhost:8080/ui/clusters/local/all-topics?perPage=25
+```
+
+
 ## Design Considerations & Thought Process
 1. Batching Strategy: Rather than sending individual updates to Kafka, messages are batched by time (100ms default) or size (100 messages default). This significantly reduces network overhead while maintaining near real-time delivery.
 2. Message Compression: Snappy compression reduces bandwidth usage by approximately 60-70% with minimal CPU overhead.
