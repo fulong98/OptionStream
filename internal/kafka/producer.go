@@ -40,14 +40,37 @@ type Writer interface {
 func NewProducer(cfg config.KafkaConfig) (*Producer, error) {
 	log.Printf("Connecting to Kafka brokers: %v", cfg.Brokers)
 
+	dialer := &kafkago.Dialer{
+		Timeout:   10 * time.Second,
+		DualStack: true,
+		KeepAlive: 60 * time.Second,
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	log.Printf("Testing Kafka connection...")
+	conn, err := dialer.DialContext(ctx, "tcp", cfg.Brokers[0])
+	if err != nil {
+		return nil, fmt.Errorf("failed to connect to Kafka: %w", err)
+	}
+
+	// Verify topic exists
+	partitions, err := conn.ReadPartitions(cfg.Topic)
+	if err != nil {
+		conn.Close()
+		return nil, fmt.Errorf("failed to read topic metadata: %w", err)
+	}
+
+	log.Printf("Successfully connected to Kafka: topic %s has %d partitions",
+		cfg.Topic, len(partitions))
+	conn.Close()
+
 	writer := kafkago.NewWriter(kafkago.WriterConfig{
-		Brokers:  cfg.Brokers,
-		Balancer: &kafkago.CRC32Balancer{},
-		Dialer: &kafkago.Dialer{
-			Timeout:   10 * time.Second,
-			DualStack: true,
-			KeepAlive: 60 * time.Second,
-		},
+		Brokers: cfg.Brokers,
+		// Topic:            cfg.Topic, // Set default topic
+		Balancer:         &kafkago.CRC32Balancer{},
+		Dialer:           dialer,
 		WriteTimeout:     10 * time.Second,
 		ReadTimeout:      10 * time.Second,
 		Async:            false,
@@ -55,20 +78,6 @@ func NewProducer(cfg config.KafkaConfig) (*Producer, error) {
 		BatchTimeout:     time.Duration(cfg.BatchTimeoutMs) * time.Millisecond,
 		CompressionCodec: kafkago.Snappy.Codec(),
 	})
-
-	// Test the connection
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	log.Printf("Testing Kafka connection...")
-	if err := writer.WriteMessages(ctx, kafkago.Message{
-		Topic: cfg.Topic,
-		Value: []byte("test connection"),
-	}); err != nil {
-		return nil, fmt.Errorf("failed to connect to Kafka: %w", err)
-	}
-
-	log.Printf("Successfully connected to Kafka")
 
 	producer := &Producer{
 		writer:     writer,
@@ -153,7 +162,7 @@ func (p *Producer) flushBatch(batch []kafkago.Message) {
 func (p *Producer) monitorStats() {
 	defer p.wg.Done()
 
-	ticker := time.NewTicker(time.Minute)
+	ticker := time.NewTicker(time.Second * 5)
 	defer ticker.Stop()
 
 	for {
